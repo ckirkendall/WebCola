@@ -6,9 +6,16 @@ module cola.vpsc {
         variable: Variable;
     }
 
+    export class Padding {
+        constructor(public top: number,
+                    public right: number,
+                    public bottom: number,
+                    public left: number) {};
+    }
+
     export interface Group {
         bounds: Rectangle;
-        padding: number;
+        padding: Padding;
         stiffness: number;
         leaves: Leaf[];
         groups: Group[];
@@ -22,7 +29,10 @@ module cola.vpsc {
             Rectangle.empty();
         if (typeof g.groups !== "undefined")
             g.bounds = <Rectangle>g.groups.reduce((r: Rectangle, c) => computeGroupBounds(c).union(r), g.bounds);
-        g.bounds = g.bounds.inflate(g.padding);
+        g.bounds = g.bounds.inflate(g.padding.top,
+                                    g.padding.right,
+                                    g.padding.bottom,
+                                    g.padding.left);
         return g.bounds;
     }
 
@@ -100,7 +110,7 @@ module cola.vpsc {
             }
             return intersections;
         }
-        
+
         /**
          * return any intersection points between a line extending from the centre of this rectangle to the given point,
          *  and the sides of this rectangle
@@ -148,8 +158,15 @@ module cola.vpsc {
             return null;
         }
 
-        inflate(pad: number): Rectangle {
-            return new Rectangle(this.x - pad, this.X + pad, this.y - pad, this.Y + pad);
+
+        inflate(top: number, right?: number, bottom?: number, left?: number): Rectangle {
+            if(typeof right === "undefined"){
+                return new Rectangle(this.x - top, this.X + top, this.y - top, this.Y + top);
+            }else if (typeof bottom === "undefined") {
+                return new Rectangle(this.x - right, this.X + right, this.y - top, this.Y + top);
+            }else{
+                return new Rectangle(this.x - left, this.X + right, this.y - top, this.Y + bottom);
+            }
         }
     }
 
@@ -212,6 +229,8 @@ module cola.vpsc {
         getOpen: (r: Rectangle) => number;
         getClose: (r: Rectangle) => number;
         getSize: (r: Rectangle) => number;
+        getPaddingMax: (p: Padding) => number;
+        getPaddingMin: (p: Padding) => number;
         makeRect: (open: number, close: number, center: number, size: number) => Rectangle;
         findNeighbours: (v: Node, scanline: RBTree<Node>) => void;
     }
@@ -221,6 +240,8 @@ module cola.vpsc {
         getOpen: r=> r.y,
         getClose: r=> r.Y,
         getSize: r=> r.width(),
+        getPaddingMax: p=> p.right,
+        getPaddingMin: p=> p.left,
         makeRect: (open, close, center, size) => new Rectangle(center - size / 2, center + size / 2, open, close) ,
         findNeighbours: findXNeighbours
     };
@@ -230,13 +251,16 @@ module cola.vpsc {
         getOpen: r=> r.x,
         getClose: r=> r.X,
         getSize: r=> r.height(),
+        getPaddingMax: p=> p.bottom,
+        getPaddingMin: p=> p.top,
         makeRect: (open, close, center, size) => new Rectangle(open, close, center - size / 2, center + size / 2),
         findNeighbours: findYNeighbours
     };
 
     function generateGroupConstraints(root: Group, f: RectAccessors, minSep: number, isContained: boolean = false): Constraint[]
     {
-        var padding = root.padding,
+        var paddingMax = f.getPaddingMax(root.padding),
+            paddingMin = f.getPaddingMin(root.padding),
             gn = typeof root.groups !== 'undefined' ? root.groups.length : 0,
             ln = typeof root.leaves !== 'undefined' ? root.leaves.length : 0,
             childConstraints: Constraint[] = !gn ? []
@@ -251,11 +275,11 @@ module cola.vpsc {
             var b: Rectangle = root.bounds,
                 c = f.getCentre(b), s = f.getSize(b) / 2,
                 open = f.getOpen(b), close = f.getClose(b),
-                min = c - s + padding / 2, max = c + s - padding / 2;
+                min = c - s + paddingMin / 2, max = c + s - paddingMax / 2;
             root.minVar.desiredPosition = min;
-            add(f.makeRect(open, close, min, padding), root.minVar);
+            add(f.makeRect(open, close, min, paddingMin), root.minVar);
             root.maxVar.desiredPosition = max;
-            add(f.makeRect(open, close, max, padding), root.maxVar);
+            add(f.makeRect(open, close, max, paddingMax), root.maxVar);
         }
         if (ln) root.leaves.forEach(l => add(l.bounds, l.variable));
         if (gn) root.groups.forEach(g => {
@@ -267,9 +291,13 @@ module cola.vpsc {
             vs.forEach(v => { v.cOut = [], v.cIn = [] });
             cs.forEach(c => { c.left.cOut.push(c), c.right.cIn.push(c) });
             root.groups.forEach(g => {
-                var gapAdjustment = (g.padding - f.getSize(g.bounds)) / 2;
-                g.minVar.cIn.forEach(c => c.gap += gapAdjustment);
-                g.minVar.cOut.forEach(c => { c.left = g.maxVar; c.gap += gapAdjustment; });
+                var pmin = f.getPaddingMin(g.padding);
+                var pmax = f.getPaddingMax(g.padding);
+                if (((pmin + pmax) / 2 ) < f.getSize(g.bounds)){
+                    var gapAdjustment = (((pmin + pmax) / 2 ) - f.getSize(g.bounds)) / 2;
+                    g.minVar.cIn.forEach(c => c.gap += pmin - f.getSize(g.bounds) / 2); //gapAdjustment);
+                    g.minVar.cOut.forEach(c => { c.left = g.maxVar; c.gap += pmax - f.getSize(g.bounds) / 2 });  //gapAdjustment; });
+                }
             });
         }
         return childConstraints.concat(cs);
@@ -499,9 +527,8 @@ module cola.vpsc {
                 g => {
                     var xmin = x[(<IndexedVariable>g.minVar).index] = g.minVar.position();
                     var xmax = x[(<IndexedVariable>g.maxVar).index] = g.maxVar.position();
-                    var p2 = g.padding / 2;
-                    g.bounds.x = xmin - p2;
-                    g.bounds.X = xmax + p2;
+                    g.bounds.x = xmin - g.padding.left;
+                    g.bounds.X = xmax + g.padding.right;
                 });
         }
 
@@ -512,9 +539,8 @@ module cola.vpsc {
                 g => {
                     var ymin = y[(<IndexedVariable>g.minVar).index] = g.minVar.position();
                     var ymax = y[(<IndexedVariable>g.maxVar).index] = g.maxVar.position();
-                    var p2 = g.padding / 2;
-                    g.bounds.y = ymin - p2;;
-                    g.bounds.Y = ymax + p2;
+                    g.bounds.y = ymin - g.padding.top;
+                    g.bounds.Y = ymax + g.padding.bottom;
                 });
         }
 
@@ -525,10 +551,10 @@ module cola.vpsc {
             ];
         }
 
-        private project(x0: number[], y0: number[], start: number[], desired: number[], 
+        private project(x0: number[], y0: number[], start: number[], desired: number[],
             getDesired: (v: GraphNode) => number,
-            cs: Constraint[], 
-            generateConstraints: (g: Group) => Constraint[], 
+            cs: Constraint[],
+            generateConstraints: (g: Group) => Constraint[],
             updateNodeBounds: (v: GraphNode) => any,
             updateGroupBounds: (g: Group) => any)
         {

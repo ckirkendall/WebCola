@@ -310,9 +310,21 @@ var cola;
             };
             // visit neighbours by active constraints within the same block
             Variable.prototype.visitNeighbours = function (prev, f) {
-                var ff = function (c, next) { return c.active && prev !== next && f(c, next); };
-                this.cOut.forEach(function (c) { return ff(c, c.right); });
-                this.cIn.forEach(function (c) { return ff(c, c.left); });
+                //var ff = (c, next) => c.active && prev !== next && f(c, next);
+                for (var i = 0; i < this.cOut.length; i++) {
+                    var c = this.cOut[i];
+                    if (c.active && c.right !== prev) {
+                        f(c, c.right);
+                    }
+                }
+                for (var j = 0; j < this.cIn.length; j++) {
+                    var c = this.cIn[j];
+                    if (c.active && c.left !== prev) {
+                        f(c, c.left);
+                    }
+                }
+                //this.cOut.forEach(c=> ff(c, c.right));
+                //this.cIn.forEach(c=> ff(c, c.left));
             };
             return Variable;
         })();
@@ -337,11 +349,13 @@ var cola;
                     this.ps.addVariable(this.vars[i]);
                 this.posn = this.ps.getPosn();
             };
-            Block.prototype.compute_lm = function (v, u, postAction) {
+            Block.prototype.compute_lm = function (v, u, postAction, count) {
                 var _this = this;
+                if (count === void 0) { count = 0; }
                 var dfdv = v.dfdv();
+                //console.log(count);
                 v.visitNeighbours(u, function (c, next) {
-                    var _dfdv = _this.compute_lm(next, v, postAction);
+                    var _dfdv = _this.compute_lm(next, v, postAction, ++count);
                     if (next === c.right) {
                         dfdv += _dfdv * c.left.scale;
                         c.lm = _dfdv;
@@ -374,7 +388,7 @@ var cola;
             };
             // calculate lagrangian multipliers on constraints and
             // find the active constraint in this block with the smallest lagrangian.
-            // if the lagrangian is negative, then the constraint is a split candidate.  
+            // if the lagrangian is negative, then the constraint is a split candidate.
             Block.prototype.findMinLM = function () {
                 var m = null;
                 this.compute_lm(this.vars[0], null, function (c) {
@@ -533,7 +547,7 @@ var cola;
             Blocks.prototype.updateBlockPositions = function () {
                 this.list.forEach(function (b) { return b.updateWeightedPosition(); });
             };
-            // split each block across its constraint with the minimum lagrangian 
+            // split each block across its constraint with the minimum lagrangian
             Blocks.prototype.split = function (inactive) {
                 var _this = this;
                 this.updateBlockPositions();
@@ -722,13 +736,24 @@ var cola;
 (function (cola) {
     var vpsc;
     (function (vpsc) {
+        var Padding = (function () {
+            function Padding(top, right, bottom, left) {
+                this.top = top;
+                this.right = right;
+                this.bottom = bottom;
+                this.left = left;
+            }
+            ;
+            return Padding;
+        })();
+        vpsc.Padding = Padding;
         function computeGroupBounds(g) {
             g.bounds = typeof g.leaves !== "undefined" ?
                 g.leaves.reduce(function (r, c) { return c.bounds.union(r); }, Rectangle.empty()) :
                 Rectangle.empty();
             if (typeof g.groups !== "undefined")
                 g.bounds = g.groups.reduce(function (r, c) { return computeGroupBounds(c).union(r); }, g.bounds);
-            g.bounds = g.bounds.inflate(g.padding);
+            g.bounds = g.bounds.inflate(g.padding.top, g.padding.right, g.padding.bottom, g.padding.left);
             return g.bounds;
         }
         vpsc.computeGroupBounds = computeGroupBounds;
@@ -832,8 +857,16 @@ var cola;
                 }
                 return null;
             };
-            Rectangle.prototype.inflate = function (pad) {
-                return new Rectangle(this.x - pad, this.X + pad, this.y - pad, this.Y + pad);
+            Rectangle.prototype.inflate = function (top, right, bottom, left) {
+                if (typeof right === "undefined") {
+                    return new Rectangle(this.x - top, this.X + top, this.y - top, this.Y + top);
+                }
+                else if (typeof bottom === "undefined") {
+                    return new Rectangle(this.x - right, this.X + right, this.y - top, this.Y + top);
+                }
+                else {
+                    return new Rectangle(this.x - left, this.X + right, this.y - top, this.Y + bottom);
+                }
             };
             return Rectangle;
         })();
@@ -898,6 +931,8 @@ var cola;
             getOpen: function (r) { return r.y; },
             getClose: function (r) { return r.Y; },
             getSize: function (r) { return r.width(); },
+            getPaddingMax: function (p) { return p.right; },
+            getPaddingMin: function (p) { return p.left; },
             makeRect: function (open, close, center, size) { return new Rectangle(center - size / 2, center + size / 2, open, close); },
             findNeighbours: findXNeighbours
         };
@@ -906,20 +941,22 @@ var cola;
             getOpen: function (r) { return r.x; },
             getClose: function (r) { return r.X; },
             getSize: function (r) { return r.height(); },
+            getPaddingMax: function (p) { return p.bottom; },
+            getPaddingMin: function (p) { return p.top; },
             makeRect: function (open, close, center, size) { return new Rectangle(open, close, center - size / 2, center + size / 2); },
             findNeighbours: findYNeighbours
         };
         function generateGroupConstraints(root, f, minSep, isContained) {
             if (isContained === void 0) { isContained = false; }
-            var padding = root.padding, gn = typeof root.groups !== 'undefined' ? root.groups.length : 0, ln = typeof root.leaves !== 'undefined' ? root.leaves.length : 0, childConstraints = !gn ? []
+            var paddingMax = f.getPaddingMax(root.padding), paddingMin = f.getPaddingMin(root.padding), gn = typeof root.groups !== 'undefined' ? root.groups.length : 0, ln = typeof root.leaves !== 'undefined' ? root.leaves.length : 0, childConstraints = !gn ? []
                 : root.groups.reduce(function (ccs, g) { return ccs.concat(generateGroupConstraints(g, f, minSep, true)); }, []), n = (isContained ? 2 : 0) + ln + gn, vs = new Array(n), rs = new Array(n), i = 0, add = function (r, v) { rs[i] = r; vs[i++] = v; };
             if (isContained) {
                 // if this group is contained by another, then we add two dummy vars and rectangles for the borders
-                var b = root.bounds, c = f.getCentre(b), s = f.getSize(b) / 2, open = f.getOpen(b), close = f.getClose(b), min = c - s + padding / 2, max = c + s - padding / 2;
+                var b = root.bounds, c = f.getCentre(b), s = f.getSize(b) / 2, open = f.getOpen(b), close = f.getClose(b), min = c - s + paddingMin / 2, max = c + s - paddingMax / 2;
                 root.minVar.desiredPosition = min;
-                add(f.makeRect(open, close, min, padding), root.minVar);
+                add(f.makeRect(open, close, min, paddingMin), root.minVar);
                 root.maxVar.desiredPosition = max;
-                add(f.makeRect(open, close, max, padding), root.maxVar);
+                add(f.makeRect(open, close, max, paddingMax), root.maxVar);
             }
             if (ln)
                 root.leaves.forEach(function (l) { return add(l.bounds, l.variable); });
@@ -933,9 +970,13 @@ var cola;
                 vs.forEach(function (v) { v.cOut = [], v.cIn = []; });
                 cs.forEach(function (c) { c.left.cOut.push(c), c.right.cIn.push(c); });
                 root.groups.forEach(function (g) {
-                    var gapAdjustment = (g.padding - f.getSize(g.bounds)) / 2;
-                    g.minVar.cIn.forEach(function (c) { return c.gap += gapAdjustment; });
-                    g.minVar.cOut.forEach(function (c) { c.left = g.maxVar; c.gap += gapAdjustment; });
+                    var pmin = f.getPaddingMin(g.padding);
+                    var pmax = f.getPaddingMax(g.padding);
+                    if (((pmin + pmax) / 2) < f.getSize(g.bounds)) {
+                        var gapAdjustment = (((pmin + pmax) / 2) - f.getSize(g.bounds)) / 2;
+                        g.minVar.cIn.forEach(function (c) { return c.gap += pmin - f.getSize(g.bounds) / 2; }); //gapAdjustment);
+                        g.minVar.cOut.forEach(function (c) { c.left = g.maxVar; c.gap += pmax - f.getSize(g.bounds) / 2; }); //gapAdjustment; });
+                    }
                 });
             }
             return childConstraints.concat(cs);
@@ -1145,9 +1186,8 @@ var cola;
                 this.project(x0, y0, x0, x, function (v) { return v.px; }, this.xConstraints, generateXGroupConstraints, function (v) { return v.bounds.setXCentre(x[v.variable.index] = v.variable.position()); }, function (g) {
                     var xmin = x[g.minVar.index] = g.minVar.position();
                     var xmax = x[g.maxVar.index] = g.maxVar.position();
-                    var p2 = g.padding / 2;
-                    g.bounds.x = xmin - p2;
-                    g.bounds.X = xmax + p2;
+                    g.bounds.x = xmin - g.padding.left;
+                    g.bounds.X = xmax + g.padding.right;
                 });
             };
             Projection.prototype.yProject = function (x0, y0, y) {
@@ -1156,10 +1196,8 @@ var cola;
                 this.project(x0, y0, y0, y, function (v) { return v.py; }, this.yConstraints, generateYGroupConstraints, function (v) { return v.bounds.setYCentre(y[v.variable.index] = v.variable.position()); }, function (g) {
                     var ymin = y[g.minVar.index] = g.minVar.position();
                     var ymax = y[g.maxVar.index] = g.maxVar.position();
-                    var p2 = g.padding / 2;
-                    g.bounds.y = ymin - p2;
-                    ;
-                    g.bounds.Y = ymax + p2;
+                    g.bounds.y = ymin - g.padding.top;
+                    g.bounds.Y = ymax + g.padding.bottom;
                 });
             };
             Projection.prototype.projectFunctions = function () {
@@ -1774,10 +1812,6 @@ var cola;
             while (i--) {
                 this.g[i] = new Array(n);
                 this.H[i] = new Array(n);
-                j = n;
-                while (j--) {
-                    this.H[i][j] = new Array(n);
-                }
                 this.Hd[i] = new Array(n);
                 this.a[i] = new Array(n);
                 this.b[i] = new Array(n);
@@ -1787,6 +1821,20 @@ var cola;
                 this.ia[i] = new Array(n);
                 this.ib[i] = new Array(n);
                 this.xtmp[i] = new Array(n);
+                j = n;
+                while (j--) {
+                    this.g[i][j] = 0.0;
+                    this.H[i][j] = new Array(n);
+                    this.Hd[i][j] = 0.0;
+                    this.a[i][j] = 0.0;
+                    this.b[i][j] = 0.0;
+                    this.c[i][j] = 0.0;
+                    this.d[i][j] = 0.0;
+                    this.e[i][j] = 0.0;
+                    this.ia[i][j] = 0.0;
+                    this.ib[i][j] = 0.0;
+                    this.xtmp[i][j] = 0.0;
+                }
             }
         }
         Descent.createSquareMatrix = function (n, f) {
@@ -1802,9 +1850,9 @@ var cola;
         Descent.prototype.offsetDir = function () {
             var _this = this;
             var u = new Array(this.k);
-            var l = 0;
+            var l = 0.0;
             for (var i = 0; i < this.k; ++i) {
-                var x = u[i] = this.random.getNextBetween(0.01, 1) - 0.5;
+                var x = u[i] = this.random.getNextBetween(0.01, 1.0) - 0.5;
                 l += x * x;
             }
             l = Math.sqrt(l);
@@ -1812,6 +1860,7 @@ var cola;
         };
         // compute first and second derivative information storing results in this.g and this.H
         Descent.prototype.computeDerivatives = function (x) {
+            //var startTime: number = new Date().getTime();
             var _this = this;
             var n = this.n;
             if (n < 1)
@@ -1825,47 +1874,49 @@ var cola;
             var d = new Array(this.k);
             var d2 = new Array(this.k);
             var Huu = new Array(this.k);
-            var maxH = 0;
+            var maxH = 0.0;
+            var sd2 = 0.0;
             for (var u = 0; u < n; ++u) {
                 for (i = 0; i < this.k; ++i)
-                    Huu[i] = this.g[i][u] = 0;
+                    Huu[i] = this.g[i][u] = 0.0;
                 for (var v = 0; v < n; ++v) {
-                    if (u === v)
-                        continue;
-                    // The following loop randomly displaces nodes that are at identical positions
-                    var maxDisplaces = n; // avoid infinite loop in the case of numerical issues, such as huge values
-                    while (maxDisplaces--) {
-                        var sd2 = 0;
-                        for (i = 0; i < this.k; ++i) {
-                            var dx = d[i] = x[i][u] - x[i][v];
-                            sd2 += d2[i] = dx * dx;
+                    if (!(u === v)) {
+                        // The following loop randomly displaces nodes that are at identical positions
+                        var maxDisplaces = n; // avoid infinite loop in the case of numerical issues, such as huge values
+                        while (maxDisplaces--) {
+                            sd2 = 0.0;
+                            for (i = 0; i < this.k; ++i) {
+                                var dx = d[i] = x[i][u] - x[i][v] + 0.0;
+                                sd2 += d2[i] = dx * dx;
+                            }
+                            if (sd2 > 1e-9)
+                                break;
+                            var rd = this.offsetDir();
+                            for (i = 0; i < this.k; ++i)
+                                x[i][v] += rd[i];
                         }
-                        if (sd2 > 1e-9)
-                            break;
-                        var rd = this.offsetDir();
-                        for (i = 0; i < this.k; ++i)
-                            x[i][v] += rd[i];
-                    }
-                    var l = Math.sqrt(sd2);
-                    var D = this.D[u][v];
-                    var weight = this.G != null ? this.G[u][v] : 1;
-                    if (weight > 1 && l > D || !isFinite(D)) {
-                        for (i = 0; i < this.k; ++i)
-                            this.H[i][u][v] = 0;
-                        continue;
-                    }
-                    if (weight > 1) {
-                        weight = 1;
-                    }
-                    var D2 = D * D;
-                    var gs = 2 * weight * (l - D) / (D2 * l);
-                    var l3 = l * l * l;
-                    var hs = 2 * -weight / (D2 * l3);
-                    if (!isFinite(gs))
-                        console.log(gs);
-                    for (i = 0; i < this.k; ++i) {
-                        this.g[i][u] += d[i] * gs;
-                        Huu[i] -= this.H[i][u][v] = hs * (l3 + D * (d2[i] - sd2) + l * sd2);
+                        var l = Math.sqrt(sd2);
+                        var D = this.D[u][v];
+                        var weight = this.G != null ? this.G[u][v] : 1.0;
+                        if (weight > 1 && l > D || !isFinite(D)) {
+                            for (i = 0; i < this.k; ++i)
+                                this.H[i][u][v] = 0.0;
+                        }
+                        else {
+                            if (weight > 1.0) {
+                                weight = 1.0;
+                            }
+                            var D2 = D * D;
+                            var gs = 2.0 * weight * (l - D) / (D2 * l);
+                            var l3 = l * l * l;
+                            var hs = 2.0 * -weight / (D2 * l3);
+                            //if (!isFinite(gs))
+                            //    console.log(gs);
+                            for (i = 0; i < this.k; ++i) {
+                                this.g[i][u] += d[i] * gs;
+                                Huu[i] -= this.H[i][u][v] = hs * (l3 + D * (d2[i] - sd2) + l * sd2);
+                            }
+                        }
                     }
                 }
                 for (i = 0; i < this.k; ++i)
@@ -1915,6 +1966,8 @@ var cola;
                                     if (isNaN(this.H[i][u][v])) debugger;
                             }
             DEBUG */
+            //var endTime: number = new Date().getTime();
+            // console.log("DER:", endTime - startTime);
         };
         Descent.dotProd = function (a, b) {
             var x = 0, i = a.length;
@@ -1932,7 +1985,7 @@ var cola;
         // derivative information in this.g and this.H
         // returns the scalar multiplier to apply to d to get the optimal step
         Descent.prototype.computeStepSize = function (d) {
-            var numerator = 0, denominator = 0;
+            var numerator = 0.0, denominator = 0.0;
             for (var i = 0; i < this.k; ++i) {
                 numerator += Descent.dotProd(this.g[i], d[i]);
                 Descent.rightMultiply(this.H[i], d[i], this.Hd[i]);
@@ -2000,14 +2053,15 @@ var cola;
             this.computeDerivatives(x0);
             var alpha = this.computeStepSize(this.g);
             this.stepAndProject(x0, r, this.g, alpha);
-            for (var u = 0; u < this.n; ++u)
-                for (var i = 0; i < this.k; ++i)
-                    if (isNaN(r[i][u]))
-                        debugger;
+            /* DEBUG
+                        for (var u: number = 0; u < this.n; ++u)
+                            for (var i = 0; i < this.k; ++i)
+                                if (isNaN(r[i][u])) debugger;
+            DEBUG */
             if (this.project) {
                 this.matrixApply(function (i, j) { return _this.e[i][j] = x0[i][j] - r[i][j]; });
                 var beta = this.computeStepSize(this.e);
-                beta = Math.max(0.2, Math.min(beta, 1));
+                beta = Math.max(0.2, Math.min(beta, 1.0));
                 this.stepAndProject(x0, r, this.e, beta);
             }
         };
@@ -2047,7 +2101,7 @@ var cola;
             }
         };
         Descent.prototype.computeStress = function () {
-            var stress = 0;
+            var stress = 0.0;
             for (var u = 0, nMinus1 = this.n - 1; u < nMinus1; ++u) {
                 for (var v = u + 1, n = this.n; v < n; ++v) {
                     var l = 0;
@@ -3089,10 +3143,14 @@ var cola;
             if (!x)
                 return this._groups;
             this._groups = x;
-            this._rootGroup = {};
+            this._rootGroup = { padding: { width: 0, height: 0 } };
             this._groups.forEach(function (g) {
-                if (typeof g.padding === "undefined")
-                    g.padding = 1;
+                if (typeof g.padding === "undefined") {
+                    g.padding = new cola.vpsc.Padding(1, 1, 1, 1);
+                }
+                else if (typeof g.padding === "number") {
+                    g.padding = new cola.vpsc.Padding(g.padding, g.padding, g.padding, g.padding);
+                }
                 if (typeof g.leaves !== "undefined")
                     g.leaves.forEach(function (v, i) { (g.leaves[i] = _this._nodes[v]).parent = g; });
                 if (typeof g.groups !== "undefined")
@@ -3297,7 +3355,7 @@ var cola;
                 G = cola.Descent.createSquareMatrix(N, function () { return 2; });
                 this._links.forEach(function (e) {
                     var u = Layout.getSourceIndex(e), v = Layout.getTargetIndex(e);
-                    G[u][v] = G[v][u] = 1;
+                    G[u][v] = G[v][u] = 1.0;
                 });
             }
             var D = cola.Descent.createSquareMatrix(N, function (i, j) {
@@ -3325,8 +3383,8 @@ var cola;
                     //        addAttraction(gid, i + 1, 0.1, 0.1);
                     //        addAttraction(gid + 1, i + 1, 0.1, 0.1);
                     //    });
-                    x[i] = 0, y[i++] = 0;
-                    x[i] = 0, y[i++] = 0;
+                    x[i] = 0.0, y[i++] = 0.0;
+                    x[i] = 0.0, y[i++] = 0.0;
                 });
             }
             else
@@ -3635,7 +3693,7 @@ var cola;
     var GridRouter = (function () {
         function GridRouter(originalnodes, accessor, groupPadding) {
             var _this = this;
-            if (groupPadding === void 0) { groupPadding = 12; }
+            if (groupPadding === void 0) { groupPadding = new cola.vpsc.Padding(12, 12, 12, 12); }
             this.originalnodes = originalnodes;
             this.groupPadding = groupPadding;
             this.leaves = null;
@@ -3644,7 +3702,7 @@ var cola;
             this.groups = this.nodes.filter(function (g) { return !g.leaf; });
             this.cols = this.getGridDim('x');
             this.rows = this.getGridDim('y');
-            // create parents for each node or group that is a member of another's children 
+            // create parents for each node or group that is a member of another's children
             this.groups.forEach(function (v) {
                 return v.children.forEach(function (c) { return _this.nodes[c].parent = v; });
             });
@@ -3672,7 +3730,7 @@ var cola;
             frontToBackGroups.forEach(function (v) {
                 var r = cola.vpsc.Rectangle.empty();
                 v.children.forEach(function (c) { return r = r.union(_this.nodes[c].rect); });
-                v.rect = r.inflate(_this.groupPadding);
+                v.rect = r.inflate(_this.groupPadding.top, _this.groupPadding.right, _this.groupPadding.bottom, _this.groupPadding.left);
             });
             var colMids = this.midPoints(this.cols.map(function (r) { return r.x; }));
             var rowMids = this.midPoints(this.rows.map(function (r) { return r.y; }));
@@ -3829,7 +3887,7 @@ var cola;
             return vsegmentsets;
         };
         // for all segments in this bundle create a vpsc problem such that
-        // each segment's x position is a variable and separation constraints 
+        // each segment's x position is a variable and separation constraints
         // are given by the partial order over the edges to which the segments belong
         // for each pair s1,s2 of segments in the open set:
         //   e1 = edge of s1, e2 = edge of s2
@@ -3981,7 +4039,7 @@ var cola;
                     if (lcs.length === 0)
                         continue; // no common subpath
                     if (lcs.reversed) {
-                        // if we found a common subpath but one of the edges runs the wrong way, 
+                        // if we found a common subpath but one of the edges runs the wrong way,
                         // then reverse f.
                         f.reverse();
                         f.reversed = true;
@@ -3996,7 +4054,7 @@ var cola;
                     if (lcs.si + lcs.length >= e.length || lcs.ti + lcs.length >= f.length) {
                         // if the common subsequence of the
                         // two edges being considered goes all the way to the
-                        // end of one (or both) of the lines then we have to 
+                        // end of one (or both) of the lines then we have to
                         // base our ordering decision on the other end of the
                         // common subsequence
                         u = e[lcs.si + 1];

@@ -57,9 +57,21 @@ module cola.vpsc {
 
         // visit neighbours by active constraints within the same block
         visitNeighbours(prev: Variable, f: (c: Constraint, next: Variable) => void ): void {
-            var ff = (c, next) => c.active && prev !== next && f(c, next);
-            this.cOut.forEach(c=> ff(c, c.right));
-            this.cIn.forEach(c=> ff(c, c.left));
+            //var ff = (c, next) => c.active && prev !== next && f(c, next);
+            for(var i=0; i < this.cOut.length; i++){
+                var c = this.cOut[i];
+                if(c.active && c.right !== prev){
+                    f(c, c.right);
+                }
+            }
+            for(var j=0; j < this.cIn.length; j++){
+                var c = this.cIn[j];
+                if(c.active && c.left !== prev){
+                    f(c, c.left);
+                }
+            }
+            //this.cOut.forEach(c=> ff(c, c.right));
+            //this.cIn.forEach(c=> ff(c, c.left));
         }
     }
 
@@ -90,10 +102,11 @@ module cola.vpsc {
             this.posn = this.ps.getPosn();
         }
 
-        private compute_lm(v: Variable, u: Variable, postAction: (c: Constraint)=>void): number {
+        private compute_lm(v: Variable, u: Variable, postAction: (c: Constraint)=>void, count = 0): number {
             var dfdv = v.dfdv();
+            //console.log(count);
             v.visitNeighbours(u, (c, next) => {
-                var _dfdv = this.compute_lm(next, v, postAction);
+                var _dfdv = this.compute_lm(next, v, postAction, ++count);
                 if (next === c.right) {
                     dfdv += _dfdv * c.left.scale;
                     c.lm = _dfdv;
@@ -103,9 +116,10 @@ module cola.vpsc {
                 }
                 postAction(c);
             });
+
             return dfdv / v.scale;
         }
-        
+
         private populateSplitBlock(v: Variable, prev: Variable): void {
             v.visitNeighbours(prev, (c, next) => {
                 next.offset = v.offset + (next === c.right ? c.gap : -c.gap);
@@ -124,7 +138,7 @@ module cola.vpsc {
 
         // calculate lagrangian multipliers on constraints and
         // find the active constraint in this block with the smallest lagrangian.
-        // if the lagrangian is negative, then the constraint is a split candidate.  
+        // if the lagrangian is negative, then the constraint is a split candidate.
         findMinLM(): Constraint {
             var m: Constraint = null;
             this.compute_lm(this.vars[0], null, c=> {
@@ -153,7 +167,7 @@ module cola.vpsc {
             });
             return endFound;
         }
-        
+
         // Search active constraint tree from u to see if there is a directed path to v.
         // Returns true if path is found.
         isActiveDirectedPathBetween(u: Variable, v: Variable) : boolean {
@@ -299,13 +313,13 @@ DEBUG */
         forEach(f: (b: Block, i: number) => void ) {
             this.list.forEach(f);
         }
-        
+
         // useful, for example, after variable desired positions change.
         updateBlockPositions(): void {
             this.list.forEach(b=> b.updateWeightedPosition());
         }
 
-        // split each block across its constraint with the minimum lagrangian 
+        // split each block across its constraint with the minimum lagrangian
         split(inactive: Constraint[]): void {
             this.updateBlockPositions();
             this.list.forEach(b=> {
@@ -322,7 +336,7 @@ DEBUG */
                 }
             });
         }
-        
+
 /* DEBUG
         // checks b is in the block, and does a sanity check over list index integrity
         contains(b: Block): boolean {
@@ -513,4 +527,4 @@ DEBUG */
             return cost;
         }
     }
-}   
+}

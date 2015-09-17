@@ -111,14 +111,15 @@ module cola {
             return mids;
         }
 
-        constructor(public originalnodes: Node[], accessor: NodeAccessor<Node>, public groupPadding: number = 12) {
+        constructor(public originalnodes: Node[], accessor: NodeAccessor<Node>,
+                    public groupPadding: cola.vpsc.Padding = new cola.vpsc.Padding(12, 12, 12,12)) {
             this.nodes = originalnodes.map((v, i) => new NodeWrapper(i, accessor.getBounds(v), accessor.getChildren(v)));
             this.leaves = this.nodes.filter(v=> v.leaf);
             this.groups = this.nodes.filter(g=> !g.leaf);
             this.cols = this.getGridDim('x');
             this.rows = this.getGridDim('y');
 
-            // create parents for each node or group that is a member of another's children 
+            // create parents for each node or group that is a member of another's children
             this.groups.forEach(v=>
                 v.children.forEach(c=> this.nodes[<number>c].parent = v));
 
@@ -140,7 +141,7 @@ module cola {
 
             // nodes ordered by their position in the group hierarchy
             this.backToFront = this.nodes.slice(0);
-            this.backToFront.sort((x, y) => this.getDepth(x) - this.getDepth(y)); 
+            this.backToFront.sort((x, y) => this.getDepth(x) - this.getDepth(y));
 
             // compute boundary rectangles for each group
             // has to be done from front to back, i.e. inside groups to outside groups
@@ -149,7 +150,7 @@ module cola {
             frontToBackGroups.forEach(v=> {
                 var r = cola.vpsc.Rectangle.empty();
                 v.children.forEach(c=> r = r.union(this.nodes[c].rect));
-                v.rect = r.inflate(this.groupPadding);
+                v.rect = r.inflate(this.groupPadding.top, this.groupPadding.right, this.groupPadding.bottom, this.groupPadding.left);
             });
 
             var colMids = this.midPoints(this.cols.map(r=> r.x));
@@ -292,9 +293,9 @@ module cola {
             }
             return vsegmentsets;
         }
-        
+
         // for all segments in this bundle create a vpsc problem such that
-        // each segment's x position is a variable and separation constraints 
+        // each segment's x position is a variable and separation constraints
         // are given by the partial order over the edges to which the segments belong
         // for each pair s1,s2 of segments in the open set:
         //   e1 = edge of s1, e2 = edge of s2
@@ -395,7 +396,7 @@ module cola {
             cola.GridRouter.unreverseEdges(routes, routePaths);
             return routes;
         }
-        
+
         // path may have been reversed by the subsequence processing in orderEdges
         // so now we need to restore the original order
         static unreverseEdges(routes, routePaths) {
@@ -452,7 +453,7 @@ module cola {
                     if (lcs.length === 0)
                         continue; // no common subpath
                     if (lcs.reversed) {
-                        // if we found a common subpath but one of the edges runs the wrong way, 
+                        // if we found a common subpath but one of the edges runs the wrong way,
                         // then reverse f.
                         f.reverse();
                         f.reversed = true;
@@ -467,7 +468,7 @@ module cola {
                     if (lcs.si + lcs.length >= e.length || lcs.ti + lcs.length >= f.length) {
                         // if the common subsequence of the
                         // two edges being considered goes all the way to the
-                        // end of one (or both) of the lines then we have to 
+                        // end of one (or both) of the lines then we have to
                         // base our ordering decision on the other end of the
                         // common subsequence
                         u = e[lcs.si + 1];
@@ -562,7 +563,7 @@ module cola {
             var shortestPath = shortestPathCalculator.PathFromNodeToNodeWithPrevCost(
                 source.ports[0].id, target.ports[0].id,
                 bendPenalty);
-            
+
             // shortest path is reversed and does not include the target port
             var pathPoints = shortestPath.reverse().map(vi => this.verts[vi]);
             pathPoints.push(this.nodes[target.id].ports[0]);

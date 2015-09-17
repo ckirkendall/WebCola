@@ -41,7 +41,7 @@ module dotpowergraph {
             .links(graph.links)
             .powerGraphGroups(function (d) {
             powerGraph = d;
-            powerGraph.groups.forEach(v=> v.padding = grouppadding);
+                powerGraph.groups.forEach(v=> v.padding = new cola.vpsc.Padding(grouppadding, grouppadding, grouppadding, grouppadding));
         });
 
         // construct a flat graph with dummy nodes for the groups and edges connecting group dummy nodes to their children
@@ -89,7 +89,7 @@ module dotpowergraph {
             .powerGraphGroups(function (d) {
                 powerGraph = d;
                 powerGraph.groups.forEach(function (v) {
-                    v.padding = grouppadding
+                    v.padding = new cola.vpsc.Padding(grouppadding,grouppadding, grouppadding, grouppadding);
                 });
             }).start(50, 0, 100),
             powerGraph: powerGraph
@@ -114,10 +114,11 @@ module dotpowergraph {
             d.routerNode.id = i;
             return d.routerNode;
         });
+        var padding = margin - groupMargin;
         return new cola.GridRouter(gridRouterNodes, {
             getChildren: (v: any) => v.children,
             getBounds: v => v.bounds
-        }, margin - groupMargin);
+        }, new cola.vpsc.Padding(padding, padding, padding, padding));
     }
 
     function gridify(svg, pgLayout, margin, groupMargin) {
@@ -234,7 +235,7 @@ module dotpowergraph {
         }
         function dragStart(d) {
             ghosts = [1, 2].map(i=> svg.append('rect')
-                .attr({ 
+                .attr({
                     class: 'ghost',
                     x: d.routerNode.bounds.x,
                     y: d.routerNode.bounds.y,

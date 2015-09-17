@@ -138,9 +138,9 @@ test("group", function () {
         return d3cola.linkId(l) == "2-3" ? 2 : 1;
     }
     var nodes = [];
-    var u = { x: -5, y: 0, width: 10, height: 10 };
-    var v = { x: 5, y: 0, width: 10, height: 10 };
-    var g = { padding: 10, leaves: [0] };
+    var u = { x: 0, y: 0, width: 10, height: 10 };
+    var v = { x: 10, y: 0, width: 10, height: 10 };
+    var g = { padding: {top: 5, right: 10, bottom: 0, left: 10}, leaves: [0] };
 
     d3cola
         .linkDistance(length)
@@ -149,10 +149,11 @@ test("group", function () {
         .groups([g]);
     d3cola.start(10, 10, 10);
 
-    ok(approxEquals(g.bounds.width(), 30, 0.1));
-    ok(approxEquals(g.bounds.height(), 30, 0.1));
 
-    ok(approxEquals(Math.abs(u.y - v.y), 20, 0.1));
+    ok(approxEquals(g.bounds.width(), 30, 0.1), JSON.stringify(u.bounds) + JSON.stringify(v.bounds));
+    ok(approxEquals(g.bounds.height(), 30, 0.1), "height: " + g.bounds.height() + " should be 30: " + JSON.stringify(g.bounds) );
+
+    ok(approxEquals(Math.abs(u.y - v.y), 20, 0.1), "distance: " + Math.abs(u.y - v.y) + " should be 20");
 });
 
 asyncTest("equality constraints", function () {
@@ -264,7 +265,7 @@ function makePoly(rand) {
                     cola.geom.isLeft(P[i - 2], P[i - 1], p) <= 0
                 || cola.geom.isLeft(P[i - 1], p, P[0]) <= 0
                 || cola.geom.isLeft(p, P[0], P[1]) <= 0)) {
-            if (ctr++ > 10) break loop; // give up after ten tries (maybe not enough space left for another convex point) 
+            if (ctr++ > 10) break loop; // give up after ten tries (maybe not enough space left for another convex point)
             p = { x: nextInt(width), y: nextInt(height) };
         }
         P.push(p);
@@ -550,7 +551,7 @@ test('metro crossing min', function () {
     equal(countRouteIntersections(routes), 0);
 });
 
-// next steps: 
+// next steps:
 //  o label node and group centre and boundary vertices
 //  - non-traversable regions (obstacles) are determined by finding the highest common ancestors of the source and target nodes
 //  - to route each edge the weights of the edges are adjusted such that those inside obstacles
@@ -564,7 +565,7 @@ asyncTest('grid router', function() {
                 return v.children;
             },
             getBounds: function(v) {
-                return typeof v.bounds !== 'undefined' 
+                return typeof v.bounds !== 'undefined'
                     ? new cola.vpsc.Rectangle(v.bounds.x, v.bounds.X, v.bounds.y, v.bounds.Y)
                     : undefined;
             }
@@ -681,11 +682,11 @@ test("shortest path with bends", function() {
     function length(e) { return e[2]};
     var sp = new cola.shortestpaths.Calculator(nodes.length, edges, source, target, length);
     var path = sp.PathFromNodeToNodeWithPrevCost(0, 4,
-    function (u,v,w){ 
+    function (u,v,w){
         var a = nodes[u], b = nodes[v], c = nodes[w];
         var dx = Math.abs(c[0] - a[0]), dy = Math.abs(c[1] - a[1]);
         return dx > 0.01 && dy > 0.01
-            ? 1000 
+            ? 1000
             : 0;
     });
     ok(true);

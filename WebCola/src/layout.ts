@@ -30,9 +30,9 @@ module cola {
         target: NodeType;
         length?: number;
     }
-    
+
     /**
-     * Main interface to cola layout.  
+     * Main interface to cola layout.
      * @class Layout
      */
     export class Layout {
@@ -58,7 +58,7 @@ module cola {
         private _threshold = 0.01;
         private _visibilityGraph = null;
         private _groupCompactness = 1e-6;
-        
+
         // sub-class and override this property to replace with a more sophisticated eventing mechanism
         protected event = null;
 
@@ -77,7 +77,7 @@ module cola {
 
         // a function that is notified of events like "tick"
         // sub-class and override this method to replace with a more sophisticated eventing mechanism
-        protected trigger(e: Event) { 
+        protected trigger(e: Event) {
             if (this.event && typeof this.event[e.type] !== 'undefined') {
                 this.event[e.type](e);
             }
@@ -174,10 +174,13 @@ module cola {
         groups(x?: Array<any>): any {
             if (!x) return this._groups;
             this._groups = x;
-            this._rootGroup = {};
+            this._rootGroup = {padding: {width: 0, height: 0}};
             this._groups.forEach(g => {
-                if (typeof g.padding === "undefined")
-                    g.padding = 1;
+                if (typeof g.padding === "undefined"){
+                    g.padding = new cola.vpsc.Padding(1,1,1,1);
+                }else if(typeof g.padding === "number"){
+                    g.padding = new cola.vpsc.Padding(g.padding,g.padding,g.padding,g.padding)
+                }
                 if (typeof g.leaves !== "undefined")
                     g.leaves.forEach((v, i) => { (g.leaves[i] = this._nodes[v]).parent = g });
                 if (typeof g.groups !== "undefined")
@@ -216,7 +219,7 @@ module cola {
          * @default false
          */
         handleDisconnected(): boolean
-        handleDisconnected(v: boolean): Layout 
+        handleDisconnected(v: boolean): Layout
         handleDisconnected(v?: boolean): any {
             if (!arguments.length) return this._handleDisconnected;
             this._handleDisconnected = v;
@@ -254,7 +257,7 @@ module cola {
         /**
          * list of constraints of various types
          * @property constraints
-         * @type {array} 
+         * @type {array}
          * @default empty list
          */
         constraints(): Array<any>
@@ -342,7 +345,7 @@ module cola {
         }
 
         convergenceThreshold(): number
-        convergenceThreshold(x: number): Layout 
+        convergenceThreshold(x: number): Layout
         convergenceThreshold(x?: number): any {
             if (!x) return this._threshold;
             this._threshold = typeof x === "function" ? x : +x;
@@ -421,7 +424,7 @@ module cola {
         /**
          * start the layout process
          * @method start
-         * @param {number} [initialUnconstrainedIterations=0] unconstrained initial layout iterations 
+         * @param {number} [initialUnconstrainedIterations=0] unconstrained initial layout iterations
          * @param {number} [initialUserConstraintIterations=0] initial layout iterations with user-specified constraints
          * @param {number} [initialAllConstraintsIterations=0] initial layout iterations with all constraints including non-overlap
          * @param {number} [gridSnapIterations=0] iterations of "grid snap", which pulls nodes towards grid cell centers - grid of size node[0].width - only really makes sense if all nodes have the same width and height
@@ -474,7 +477,7 @@ module cola {
                 G = cola.Descent.createSquareMatrix(N,() => 2);
                 this._links.forEach(e => {
                     var u = Layout.getSourceIndex(e), v = Layout.getTargetIndex(e);
-                    G[u][v] = G[v][u] = 1;
+                    G[u][v] = G[v][u] = 1.0;
                 });
             }
 
@@ -505,9 +508,9 @@ module cola {
                     //        addAttraction(gid, i + 1, 0.1, 0.1);
                     //        addAttraction(gid + 1, i + 1, 0.1, 0.1);
                     //    });
-                    
-                    x[i] = 0, y[i++] = 0;
-                    x[i] = 0, y[i++] = 0;
+
+                    x[i] = 0.0, y[i++] = 0.0;
+                    x[i] = 0.0, y[i++] = 0.0;
                 });
             } else this._rootGroup = { leaves: this._nodes, groups: [] };
 
@@ -515,7 +518,7 @@ module cola {
             if (this._directedLinkConstraints) {
                 (<any>this.linkAccessor).getMinSeparation = this._directedLinkConstraints.getMinSeparation;
                 curConstraints = curConstraints.concat(cola.generateDirectedEdgeConstraints(n, this._links, this._directedLinkConstraints.axis, <any>(this.linkAccessor)));
-                
+
                 // todo: add containment constraints between group dummy nodes and their children
             }
 

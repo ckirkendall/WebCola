@@ -157,7 +157,7 @@ function heuristicPowerGraphLayout(graph, size) {
         .links(graph.links)
         .powerGraphGroups(function (d) {
             powerGraph = d;
-            powerGraph.groups.forEach(function (v) { v.padding = 0.01 });
+            powerGraph.groups.forEach(function (v) { v.padding = new cola.vpsc.Padding(0.01,0.01,0.01,0.01) });
         });
 
     // construct a flat graph with dummy nodes for the groups and edges connecting group dummy nodes to their children
@@ -325,8 +325,8 @@ function powerGraph2(callback) {
                 getBounds: function (v: any) {
                     return v.bounds;
                 }
-            },
-                5);
+             },
+             new cola.vpsc.Padding(5,5,5,5));
 
             var gs = gridrouter.backToFront.filter(v=> !v.leaf);
             var routes = gridrouter.routeEdges<any>(g.edges, 5, e=> e.source, e=> e.target);
@@ -469,7 +469,7 @@ function powerGraph2(callback) {
                     if ((npv.bounds.Y <= np.bounds.y) && (((npv.bounds.x <= np.bounds.x) && (npv.bounds.X >= np.bounds.x)) || ((np.bounds.x <= npv.bounds.x) && (np.bounds.X >= npv.bounds.x))) ) {
                         above.push({ source: getId(npv, N), target: getId(np, N) });
                     }
-                   
+
                 }
             });
         });
@@ -483,7 +483,7 @@ function powerGraph2(callback) {
                     if ((npp.bounds.Y - 20 <= np.bounds.y + 20) && (((npp.bounds.x + 20 <= np.bounds.x) && (npp.bounds.X -20 >= np.bounds.x)) || ((np.bounds.x <= npp.bounds.x  + 20) && (np.bounds.X >= npp.bounds.x + 20)))) {
                         above.push({ source: getId(npp, N), target: getId(np, N) });
                     }
-                   
+
                 }
             });
             noparentnodes.forEach(npv => {
@@ -499,7 +499,7 @@ function powerGraph2(callback) {
                 else if ((np.bounds.Y - 20 <= npv.bounds.y) && (((npv.bounds.x <= np.bounds.x+20) && (npv.bounds.X >= np.bounds.x+20)) || ((np.bounds.x+20 <= npv.bounds.x) && (np.bounds.X-20 >= npv.bounds.x)))) {
                     above.push({ source: getId(np, N), target: getId(npv, N) });
                 }
-                
+
             });
         });
 
@@ -512,7 +512,7 @@ function powerGraph2(callback) {
                     if ((npv.bounds.Y <= np.bounds.y) && (((npv.bounds.x <= np.bounds.x) && (npv.bounds.X >= np.bounds.x)) || ((np.bounds.x <= npv.bounds.x) && (np.bounds.X >= npv.bounds.x)))) {
                         above.push({ source: getId(npv, N), target: getId(np, N) });
                     }
-                   
+
                 }
             });
         });
@@ -526,7 +526,7 @@ function powerGraph2(callback) {
                     if ((npp.bounds.Y - 20 <= np.bounds.y + 20) && (((npp.bounds.x+20 <= np.bounds.x+20) && (npp.bounds.X -20 >= np.bounds.x+20)) || ((np.bounds.x+20 <= npp.bounds.x+20) && (np.bounds.X-20 >= npp.bounds.x+20)))) {
                         above.push({ source: getId(npp, N), target: getId(np, N) });
                     }
-                    
+
                 }
             });
             parentnodes.forEach(npv => {
@@ -543,13 +543,13 @@ function powerGraph2(callback) {
                     else if ((np.bounds.Y - 20 <= npv.bounds.y) && (((npv.bounds.x <= np.bounds.x+20) && (npv.bounds.X >= np.bounds.x+20)) || ((np.bounds.x+20 <= npv.bounds.x) && (np.bounds.X-20 >= npv.bounds.x)))) {
                         above.push({ source: getId(np, N), target: getId(npv, N) });
                     }
-                   
+
                 }
             });
 
         });
 
-       
+
         var modules = { N: N, ms: [], edges: [], maxwidth: maxwidth.toString(), maxheight: maxheight.toString(), left: left, above: above, xoverlap: xoverlap, yoverlap: yoverlap };
         pgLayout.powerGraph.groups.forEach(g => {
             var m = [];

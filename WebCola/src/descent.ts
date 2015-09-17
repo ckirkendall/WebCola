@@ -25,7 +25,7 @@ module cola {
             this.locks = {};
         }
         /**
-         * @isEmpty 
+         * @isEmpty
          * @returns false if no locks exist
          */
         isEmpty(): boolean {
@@ -50,7 +50,7 @@ module cola {
      * where: D is a square matrix of ideal separations between nodes, w is matrix of weights for those separations
      *        length[x1_, y1_, z1_, x2_, y2_, z2_] = Sqrt[(x1 - x2)^2 + (y1 - y2)^2 + (z1 - z2)^2]
      * below, we use wij = 1/(Dij^2)
-     * 
+     *
      * @class Descent
      */
     export class Descent {
@@ -110,7 +110,7 @@ module cola {
          * @method constructor
          * @param x {number[][]} initial coordinates for nodes
          * @param D {number[][]} matrix of desired distances between pairs of nodes
-         * @param G {number[][]} [default=null] if specified, G is a matrix of weights for goal terms between pairs of nodes.  
+         * @param G {number[][]} [default=null] if specified, G is a matrix of weights for goal terms between pairs of nodes.
          * If G[i][j] > 1 and the separation between nodes i and j is greater than their ideal distance, then there is no contribution for this pair to the goal
          * If G[i][j] <= 1 then it is used as a weighting on the contribution of the variance between ideal and actual separation between i and j to the goal function
          */
@@ -146,10 +146,6 @@ module cola {
             while (i--) {
                 this.g[i] = new Array(n);
                 this.H[i] = new Array(n);
-                j = n;
-                while (j--) {
-                    this.H[i][j] = new Array(n);
-                }
                 this.Hd[i] = new Array(n);
                 this.a[i] = new Array(n);
                 this.b[i] = new Array(n);
@@ -159,6 +155,20 @@ module cola {
                 this.ia[i] = new Array(n);
                 this.ib[i] = new Array(n);
                 this.xtmp[i] = new Array(n);
+                j = n;
+                while (j--) {
+                    this.g[i][j] = 0.0;
+                    this.H[i][j] = new Array(n);
+                    this.Hd[i][j] = 0.0;
+                    this.a[i][j] = 0.0;
+                    this.b[i][j] = 0.0;
+                    this.c[i][j] = 0.0;
+                    this.d[i][j] = 0.0;
+                    this.e[i][j] = 0.0;
+                    this.ia[i][j] = 0.0;
+                    this.ib[i][j] = 0.0;
+                    this.xtmp[i][j] = 0.0;
+                }
             }
         }
 
@@ -175,9 +185,9 @@ module cola {
 
         private offsetDir(): number[] {
             var u = new Array(this.k);
-            var l = 0;
+            var l = 0.0;
             for (var i = 0; i < this.k; ++i) {
-                var x = u[i] = this.random.getNextBetween(0.01, 1) - 0.5;
+                var x = u[i] = this.random.getNextBetween(0.01, 1.0) - 0.5;
                 l += x * x;
             }
             l = Math.sqrt(l);
@@ -186,6 +196,8 @@ module cola {
 
         // compute first and second derivative information storing results in this.g and this.H
         public computeDerivatives(x: number[][]) {
+            //var startTime: number = new Date().getTime();
+
             var n: number = this.n;
             if (n < 1) return;
             var i: number;
@@ -197,47 +209,53 @@ DEBUG */
             var d: number[] = new Array(this.k);
             var d2: number[] = new Array(this.k);
             var Huu: number[] = new Array(this.k);
-            var maxH: number = 0;
+            var maxH: number = 0.0;
+            var sd2 = 0.0;
             for (var u: number = 0; u < n; ++u) {
-                for (i = 0; i < this.k; ++i) Huu[i] = this.g[i][u] = 0;
+                for (i = 0; i < this.k; ++i) Huu[i] = this.g[i][u] = 0.0;
                 for (var v = 0; v < n; ++v) {
-                    if (u === v) continue;
+                    if (!(u === v)) {
 
-                    // The following loop randomly displaces nodes that are at identical positions
-                    var maxDisplaces = n; // avoid infinite loop in the case of numerical issues, such as huge values
-                    while (maxDisplaces--) {
-                        var sd2 = 0;
-                        for (i = 0; i < this.k; ++i) {
-                            var dx = d[i] = x[i][u] - x[i][v];
-                            sd2 += d2[i] = dx * dx;
+                        // The following loop randomly displaces nodes that are at identical positions
+                        var maxDisplaces = n; // avoid infinite loop in the case of numerical issues, such as huge values
+                        while (maxDisplaces--) {
+                            sd2 = 0.0;
+                            for (i = 0; i < this.k; ++i) {
+                                var dx = d[i] = x[i][u] - x[i][v] + 0.0;
+                                sd2 += d2[i] = dx * dx;
+                            }
+                            if (sd2 > 1e-9) break;
+                            var rd = this.offsetDir();
+                            for (i = 0; i < this.k; ++i) x[i][v] += rd[i];
                         }
-                        if (sd2 > 1e-9) break;
-                        var rd = this.offsetDir();
-                        for (i = 0; i < this.k; ++i) x[i][v] += rd[i];
-                    }
-                    var l: number = Math.sqrt(sd2);
-                    var D: number = this.D[u][v];
-                    var weight = this.G != null ? this.G[u][v] : 1;
-                    if (weight > 1 && l > D || !isFinite(D)) {
-                        for (i = 0; i < this.k; ++i) this.H[i][u][v] = 0;
-                        continue;
-                    }
-                    if (weight > 1) {
-                        weight = 1;
-                    }
-                    var D2: number = D * D;
-                    var gs: number = 2 * weight * (l - D) / (D2 * l);
-                    var l3 = l * l * l;
-                    var hs: number = 2 * -weight / (D2 * l3);
-                    if (!isFinite(gs))
-                        console.log(gs);
-                    for (i = 0; i < this.k; ++i) {
-                        this.g[i][u] += d[i] * gs;
-                        Huu[i] -= this.H[i][u][v] = hs * (l3 + D * (d2[i] - sd2) + l * sd2);
+
+                        var l: number = Math.sqrt(sd2);
+                        var D: number = this.D[u][v];
+                        var weight = this.G != null ? this.G[u][v] : 1.0;
+                        if (weight > 1 && l > D || !isFinite(D)) {
+                            for (i = 0; i < this.k; ++i) this.H[i][u][v] = 0.0;
+                        } else {
+                            if (weight > 1.0) {
+                                weight = 1.0;
+                            }
+
+                            var D2: number = D * D;
+                            var gs: number = 2.0 * weight * (l - D) / (D2 * l);
+                            var l3 = l * l * l;
+                            var hs: number = 2.0 * -weight / (D2 * l3);
+
+                            //if (!isFinite(gs))
+                            //    console.log(gs);
+                            for (i = 0; i < this.k; ++i) {
+                                this.g[i][u] += d[i] * gs;
+                                Huu[i] -= this.H[i][u][v] = hs * (l3 + D * (d2[i] - sd2) + l * sd2);
+                            }
+                        }
                     }
                 }
                 for (i = 0; i < this.k; ++i) maxH = Math.max(maxH, this.H[i][u][u] = Huu[i]);
             }
+
             // Grid snap forces
             var r = this.snapGridSize/2;
             var g = this.snapGridSize;
@@ -277,10 +295,12 @@ DEBUG */
             for (var u: number = 0; u < n; ++u)
                 for (i = 0; i < this.k; ++i) {
                     if (isNaN(this.g[i][u])) debugger;
-                    for (var v: number = 0; v < n; ++v) 
+                    for (var v: number = 0; v < n; ++v)
                         if (isNaN(this.H[i][u][v])) debugger;
                 }
 DEBUG */
+            //var endTime: number = new Date().getTime();
+           // console.log("DER:", endTime - startTime);
         }
 
         private static dotProd(a: number[], b: number[]): number {
@@ -299,7 +319,7 @@ DEBUG */
         // derivative information in this.g and this.H
         // returns the scalar multiplier to apply to d to get the optimal step
         public computeStepSize(d: number[][]): number {
-            var numerator = 0, denominator = 0;
+            var numerator = 0.0, denominator = 0.0;
             for (var i = 0; i < this.k; ++i) {
                 numerator += Descent.dotProd(this.g[i], d[i]);
                 Descent.rightMultiply(this.H[i], d[i], this.Hd[i]);
@@ -341,7 +361,7 @@ DEBUG */
             if (this.project) this.project[1](r[0], x0[1], r[1]);
 
             // todo: allow projection against constraints in higher dimensions
-            for (var i = 2; i < this.k; i++) 
+            for (var i = 2; i < this.k; i++)
                 this.takeDescentStep(r[i], d[i], stepSize);
 
             if (!this.locks.isEmpty()) {
@@ -367,14 +387,15 @@ DEBUG */
             var alpha = this.computeStepSize(this.g);
             this.stepAndProject(x0, r, this.g, alpha);
 
+/* DEBUG
             for (var u: number = 0; u < this.n; ++u)
                 for (var i = 0; i < this.k; ++i)
                     if (isNaN(r[i][u])) debugger;
-
+DEBUG */
             if (this.project) {
                 this.matrixApply((i, j) => this.e[i][j] = x0[i][j] - r[i][j]);
                 var beta = this.computeStepSize(this.e);
-                beta = Math.max(0.2, Math.min(beta, 1));
+                beta = Math.max(0.2, Math.min(beta, 1.0));
                 this.stepAndProject(x0, r, this.e, beta);
             }
         }
@@ -418,7 +439,7 @@ DEBUG */
         }
 
         public computeStress(): number {
-            var stress = 0;
+            var stress = 0.0;
             for (var u = 0, nMinus1 = this.n - 1; u < nMinus1; ++u) {
                 for (var v = u + 1, n = this.n; v < n; ++v) {
                     var l = 0;
